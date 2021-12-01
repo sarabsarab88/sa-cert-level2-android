@@ -3,9 +3,16 @@ package io.agora.api.example.utils;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.YuvImage;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
@@ -135,7 +142,65 @@ public class YUVUtils {
 
         return outputBitmap;
     }
+    /**
+     * Sarab
+     * Decolor the picture and return to the grayscale picture
+     *
+     * @param bmpOriginal incoming picture
+     * @return decolorized picture
+     */
+    public static Bitmap toGrayscale(Bitmap bmpOriginal) {
+        int width, height;
+        height = bmpOriginal.getHeight();
+        width = bmpOriginal.getWidth();
 
+        Bitmap bmpGrayscale = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
+        Canvas c = new Canvas(bmpGrayscale);
+        Paint paint = new Paint();
+        ColorMatrix cm = new ColorMatrix();
+        cm.setSaturation(0);
+        ColorMatrixColorFilter f = new ColorMatrixColorFilter(cm);
+        paint.setColorFilter(f);
+        c.drawBitmap(bmpOriginal, 0, 0, paint);
+        return bmpGrayscale;
+    }
+
+    /**
+     * Sarab
+     * Remove color and add rounded corners at the same time
+     *
+     * @param bmpOriginal original image
+     * @param pixels Radius of rounded corners
+     * @return modified picture
+     */
+    public static Bitmap toGrayscale(Bitmap bmpOriginal, int pixels) {
+        return toRoundCorner(toGrayscale(bmpOriginal), pixels);
+    }
+    /**
+     * Sarab
+     */
+    public static Bitmap toRoundCorner(Bitmap bitmap, int pixels) {
+
+        Bitmap output = Bitmap.createBitmap(bitmap.getWidth(), bitmap
+                .getHeight(), Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(output);
+
+        final int color = 0xff424242;
+        final Paint paint = new Paint();
+        final Rect rect = new Rect(0, 0, bitmap.getWidth(), bitmap.getHeight());
+        final RectF rectF = new RectF(rect);
+        final float roundPx = pixels;
+
+        paint.setAntiAlias(true);
+        canvas.drawARGB(0, 0, 0, 0);
+        paint.setColor(color);
+        canvas.drawRoundRect(rectF, roundPx, roundPx, paint);
+
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        canvas.drawBitmap(bitmap, rect, rect, paint);
+
+        return output;
+    }
     public static byte[] bitmapToI420(int inputWidth, int inputHeight, Bitmap scaled) {
         int[] argb = new int[inputWidth * inputHeight];
         scaled.getPixels(argb, 0, inputWidth, 0, 0, inputWidth, inputHeight);

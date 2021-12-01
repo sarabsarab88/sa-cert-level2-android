@@ -19,6 +19,11 @@ import androidx.annotation.Nullable;
 import com.yanzhenjie.permission.AndPermission;
 import com.yanzhenjie.permission.runtime.Permission;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.Timer;
+import java.util.TimerTask;
+
 import io.agora.advancedvideo.rawdata.MediaDataAudioObserver;
 import io.agora.advancedvideo.rawdata.MediaDataObserverPlugin;
 import io.agora.advancedvideo.rawdata.MediaDataVideoObserver;
@@ -60,8 +65,11 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
     private EditText et_channel;
     private RtcEngine engine;
     private int myUid;
-    private boolean joined = false, blur = true;
+    private boolean joined = false, blur = true, black = true;
     private MediaDataObserverPlugin mediaDataObserverPlugin;
+    boolean isVisualizerAttached = true; //Sarab
+    private Timer timer;
+    private int maxAmplitude = 0;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -101,6 +109,7 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
         et_channel = view.findViewById(R.id.et_channel);
         join.setOnClickListener(this);
         blurBtn.setOnClickListener(this);
+        view.findViewById(R.id.btn_black).setOnClickListener(this);
         fl_local = view.findViewById(R.id.fl_local);
         fl_remote = view.findViewById(R.id.fl_remote);
     }
@@ -181,6 +190,12 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
             } else {
                 blur = false;
                 blurBtn.setText(getString(R.string.closeblur));
+            }
+        }else if (v.getId() == R.id.btn_black) {
+            if (!black) {
+                black = true;
+            } else {
+                black = false;
             }
         }
     }
@@ -310,6 +325,17 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
             showLongToast(String.format("local user %d leaveChannel!", myUid));
         }
 
+        private void setupTimer(){
+            timer = new Timer();
+            timer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    if(maxAmplitude > 0)
+                        Log.e(TAG, "Amplitude Greater than 0: " + maxAmplitude);
+                }
+
+            },0,50);
+        }
         /**Occurs when the local user joins a specified channel.
          * The channel name assignment is based on channelName specified in the joinChannel method.
          * If the uid is not specified when joinChannel is called, the server automatically assigns a uid.
@@ -320,6 +346,7 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
         public void onJoinChannelSuccess(String channel, int uid, int elapsed) {
             Log.i(TAG, String.format("onJoinChannelSuccess channel %s uid %d", channel, uid));
             showLongToast(String.format("onJoinChannelSuccess channel %s uid %d", channel, uid));
+            setupTimer();
             myUid = uid;
             joined = true;
             handler.post(new Runnable() {
@@ -398,23 +425,33 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
     @Override
     public void onCaptureVideoFrame(byte[] data, int frameType, int width, int height, int bufferLength, int yStride, int uStride, int vStride, int rotation, long renderTimeMs) {
         /**You can do some processing on the video frame here*/
-        if (blur) {
-            return;
-        }
+        if (!blur) {
         Log.e(TAG, "onCaptureVideoFrame start blur");
         Bitmap bitmap = YUVUtils.i420ToBitmap(width, height, rotation, bufferLength, data, yStride, uStride, vStride);
         Bitmap bmp = YUVUtils.blur(getContext(), bitmap, 8f);
         System.arraycopy(YUVUtils.bitmapToI420(width, height, bmp), 0, data, 0, bufferLength);
+        }
+        //Sarab
+        //Set to gray scale
+        if (!black) {
+            Bitmap bmp = YUVUtils.toGrayscale(YUVUtils.i420ToBitmap(width, height, rotation, bufferLength, data, yStride, uStride, vStride));
+            System.arraycopy(YUVUtils.bitmapToI420(width, height, bmp), 0, data, 0, bufferLength);
+        }
     }
 
     @Override
     public void onRenderVideoFrame(int uid, byte[] data, int frameType, int width, int height, int bufferLength, int yStride, int uStride, int vStride, int rotation, long renderTimeMs) {
-        if (blur) {
-            return;
+        if (!blur) {
+            Log.e(TAG, "onRenderVideoFrame start blur");
+            Bitmap bmp = YUVUtils.blur(getContext(), YUVUtils.i420ToBitmap(width, height, rotation, bufferLength, data, yStride, uStride, vStride), 8f);
+            System.arraycopy(YUVUtils.bitmapToI420(width, height, bmp), 0, data, 0, bufferLength);
         }
-        Log.e(TAG, "onRenderVideoFrame start blur");
-        Bitmap bmp = YUVUtils.blur(getContext(), YUVUtils.i420ToBitmap(width, height, rotation, bufferLength, data, yStride, uStride, vStride), 8f);
-        System.arraycopy(YUVUtils.bitmapToI420(width, height, bmp), 0, data, 0, bufferLength);
+        //Sarab
+        //Set to gray scale
+        if (!black) {
+            Bitmap bmp = YUVUtils.toGrayscale(YUVUtils.i420ToBitmap(width, height, rotation, bufferLength, data, yStride, uStride, vStride));
+            System.arraycopy(YUVUtils.bitmapToI420(width, height, bmp), 0, data, 0, bufferLength);
+        }
     }
 
     @Override
@@ -436,7 +473,10 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
      * @param bufferLength audio frame size*/
     @Override
     public void onRecordAudioFrame(byte[] data, int audioFrameType, int samples, int bytesPerSample, int channels, int samplesPerSec, long renderTimeMs, int bufferLength) {
-
+        //Sarab
+        Log.i(TAG, String.format("audioFrameType: %d samples:%d", audioFrameType, samples));
+        Log.i(TAG, String.format("bytesPerSample: %d channels:%d samplesPerSec:%d", bytesPerSample, channels, samplesPerSec));
+        Log.e(TAG, "onRecordAudioFrame ");
     }
 
     /**
@@ -452,7 +492,18 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
      * @param bufferLength audio frame size*/
     @Override
     public void onPlaybackAudioFrame(byte[] data, int audioFrameType, int samples, int bytesPerSample, int channels, int samplesPerSec, long renderTimeMs, int bufferLength) {
-
+        if(isVisualizerAttached) {
+            short[] rawAudio = new short[data.length/2];
+            ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN).asShortBuffer().get(rawAudio);
+            short amplitude = 0;
+            for(short num: rawAudio){
+                if(num > amplitude)
+                    amplitude = num;
+            }
+            Log.i(TAG, String.format("amplitude: %d ", amplitude));
+            Log.e(TAG, "onPlaybackAudioFrame: Supposedly we have data -> max: " + amplitude);
+        }
+        Log.e(TAG, "onPlaybackAudioFrame:");
     }
 
 
@@ -471,7 +522,7 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
      * @param bufferLength audio frame size*/
     @Override
     public void onPlaybackAudioFrameBeforeMixing(int uid, byte[] data, int audioFrameType, int samples, int bytesPerSample, int channels, int samplesPerSec, long renderTimeMs, int bufferLength) {
-
+        Log.e(TAG, "onPlaybackAudioFrameBeforeMixing: " );
     }
 
     /**
@@ -487,7 +538,8 @@ public class ProcessRawData extends BaseFragment implements View.OnClickListener
      * @param bufferLength audio frame size*/
     @Override
     public void onMixedAudioFrame(byte[] data, int audioFrameType, int samples, int bytesPerSample, int channels, int samplesPerSec, long renderTimeMs, int bufferLength) {
-
+        Log.e(TAG, "onMixedAudioFrame: audioFrameType" );
+        //Log.i(TAG, "onMixedAudioFrame: samples", audioFrameType);
     }
 
 }
